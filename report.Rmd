@@ -1,0 +1,189 @@
+---
+title: "STAT 5361 - Homework #8"
+subtitle: "Orstein–Uhlenbeck Process"
+author: "Lucas Godoy"
+date: "`r Sys.Date()`"
+cache: true
+output: 
+  pdf_document:
+    number_sections: false
+    includes:
+      in_header: "utils/preamble.tex"
+---
+
+```{R setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      eval = TRUE,
+                      message = FALSE,
+                      warning = FALSE,
+                      fig.align = "center", 
+                      fig.pos = "tb",
+                      fig.width = 4,
+                      fig.height = 3,
+                      dpi = 300,
+                      out.width = "90%")
+
+opts <- options(knitr.kable.NA = "", 
+                knitr.table.format = "latex",
+                kableExtra.latex.load_packages = FALSE,
+                digits = 4L)
+```
+
+```{R pkg-seed}
+suppressWarnings(library(ggplot2)) ## avoiding ggplot2 warnings
+library(data.table)
+
+set.seed(2020)
+```
+
+## Problem 5.3.3
+
+The function below was constructed to simulate data from the Orstein–Uhlenbeck
+Process.
+```{R f-oup, echo = TRUE}
+rou <- function(r0, t, dt, .alpha, .sigma, b) {
+    n <- t/dt
+    nt <- seq(from = 1, to = t, by = dt)
+    .r <- vector(mode = "numeric", length = n)
+    .r[1] <- r0
+    z <- rnorm(n = n - 1)
+    for(i in seq_along(nt)[-1])
+        .r[i] <- exp(- .alpha * dt) * .r[i-1] + b * (1 - exp(-.alpha * dt)) +
+            (.sigma / sqrt(2 * .alpha)) * sqrt(1 - exp(- 2 * .alpha * dt)) * z[i - 1]
+    
+    return(.r)           
+}
+```
+
+```{R oup-data-gen}
+pars <- expand.grid(sigma = c(.1, .2, .5),
+                    alpha = c(.1, 1, 5),
+                    b     = c(-5, 5))
+
+oup <- vector(mode = "list",
+              length = nrow(pars))
+
+.T <- 500
+## delta <- 1/500
+delta <- 1
+init <- 1
+
+set.seed(200)
+
+for(i in seq_len(nrow(pars))) {
+    oup[[i]] <- rou(r0 = init, t = .T, dt = delta,
+                    .alpha = pars$alpha[i],
+                    .sigma = pars$sigma[i],
+                    b      = pars$b[i])
+    
+    oup[[i]] <- data.table(r_t = oup[[i]],
+                           t = seq_along(oup[[i]]),
+                           alpha = pars$alpha[i],
+                           sigma = pars$sigma[i],
+                           b = pars$b[i])
+}
+
+oup <- rbindlist(oup)
+
+oup <- oup[order(sigma, alpha, b)]
+```
+
+The panel in Figure \ref{fig:pan-oup} shows the behaviour of the process
+simulated under different sets of parameters. It is clear that, increasing the
+diffusion parameter $\sigma$ increases the variability of the process. On the
+other hand, $\alpha$ seems to control the speed at swhich the process reaches
+stability.  
+
+The Euler method for this problem is is given by
+\[
+r(t + \delta) = r(t) + \alpha (b - r(t))dt + \sigma d W(t).
+\]
+The implementation is shown by the piece of code below
+```{R rou-eul, echo = TRUE}
+rou_euler <- function(r0, t, dt, b, .alpha, .sigma) {
+    n <- t/dt
+    nt <- seq(from = 1, to = t, by = dt)
+    dw <- rnorm(n - 1, 0, sqrt(dt))
+    .r <- vector(mode = "numeric", length = n)
+    .r[1] <- r0
+    for(i in seq_along(nt)[-1]) {
+        .r[i]  <-  .r[i - 1] + .alpha * (b - .r[i - 1]) * dt + .sigma * dw[i - 1]
+    }
+
+    return(.r)
+}
+```
+
+\blandscape
+
+```{R pan-oup, out.height = "\\textwidth", fig.cap = "Simulated  Orstein–Uhlenbeck processes under different parametrizations."}
+ggplot(data = oup,
+       aes(y = r_t,
+           x = t)) +
+    geom_line(lwd = .25) +
+    facet_grid(b + alpha ~ sigma,
+               labeller = label_both,
+               scales = "free_y") +
+    theme_bw() +
+    theme(axis.text.x = element_blank(),
+          text = element_text(size = 5)) +
+    labs(x = "t",
+         y = "r(t)")
+```
+
+\elandscape
+
+The density plot in Figure \ref{fig:dens-comp} displays the simulated process
+using using the Euler method with different values of $\delta$ (colors indicated
+in the legend) along with the density of a simulated process using the exact
+method (black solid line). From the graph it is clear that, as we decrease
+$\delta$, that is, as we use a finer grid, the approximation get closer to the
+exact simulation. Note that, the main difference between the exact and the
+approximated methods relies on the variability of the process since they look to
+be centered at the same spot.
+```{R dens-comp, fig.cap = "Densities of Orstein–Uhlenbeck Processes simulated under the same parametrization but using different simulation methods.", out.width = "\\textwidth"}
+exa <- rou(r0 = init, t = .T, dt = delta,
+           .alpha = 1,
+           .sigma = .5,
+           b      = 0)
+
+delta_eu <- c(1, .05, .1, .01)
+
+eul <- 
+    lapply(delta_eu, function(x)
+        data.table(
+            cbind(delta = x,
+              rou_euler(r0 = init, t = .T,
+                        dt = x,
+                        .alpha = 1,
+                        .sigma = .5,
+                        b      = 0))
+        ))
+
+eul2 <- rbindlist(eul)
+setnames(eul2, old = "V2", new = "r", skip_absent = TRUE)
+eul2[, delta := as.factor(delta)]
+
+
+ggplot() +
+    geom_line(aes(x = exa),
+              color = 1,
+              stat = "density",
+              lwd = .8,
+              inherit.aes = FALSE) +
+    geom_line(data = eul2,
+              aes(x = r,
+                  group = delta,
+                  color = delta,
+                  lty = delta),
+              stat = "density",
+              lwd = .8) +
+    theme_classic() +
+    labs(x = "r") +
+    theme(
+        legend.position = c(.95, .95),
+        legend.justification = c("right", "top"),
+        legend.box.just = "right",
+        legend.margin = margin(6, 6, 6, 6)
+    )
+```
