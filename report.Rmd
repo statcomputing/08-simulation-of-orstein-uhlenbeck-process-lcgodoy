@@ -21,7 +21,9 @@ knitr::opts_chunk$set(echo = FALSE,
                       fig.width = 4,
                       fig.height = 3,
                       dpi = 300,
-                      out.width = "90%")
+                      out.width = "90%",
+                      dev = "png",
+                      dev.args = list(type = "cairo"))
 
 opts <- options(knitr.kable.NA = "", 
                 knitr.table.format = "latex",
