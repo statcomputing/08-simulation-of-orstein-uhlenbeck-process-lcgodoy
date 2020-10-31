@@ -21,9 +21,7 @@ knitr::opts_chunk$set(echo = FALSE,
                       fig.width = 4,
                       fig.height = 3,
                       dpi = 300,
-                      out.width = "90%",
-                      dev = "png",
-                      dev.args = list(type = "cairo"))
+                      out.width = "90%")
 
 opts <- options(knitr.kable.NA = "", 
                 knitr.table.format = "latex",
@@ -118,7 +116,7 @@ rou_euler <- function(r0, t, dt, b, .alpha, .sigma) {
 
 \blandscape
 
-```{R pan-oup, out.height = "\\textwidth", fig.cap = "Simulated  Orstein–Uhlenbeck processes under different parametrizations."}
+```{R pan-oup, out.height = "\\textwidth", fig.cap = "Simulated  Orstein–Uhlenbeck processes under different parametrizations.", dev = "png", dpi = 300}
 ggplot(data = oup,
        aes(y = r_t,
            x = t)) +
