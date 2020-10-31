@@ -64,8 +64,8 @@ oup <- vector(mode = "list",
               length = nrow(pars))
 
 .T <- 500
-## delta <- 1/500
-delta <- 1
+delta <- 1/500
+## delta <- 1
 init <- 1
 
 set.seed(200)
