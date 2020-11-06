@@ -34,6 +34,9 @@ suppressWarnings(library(ggplot2)) ## avoiding ggplot2 warnings
 library(data.table)
 
 set.seed(2020)
+
+bins_sturges <- function(x)
+    diff(range(x))/nclass.Sturges(x)
 ```
 
 ## Problem 5.3.3
@@ -43,12 +46,12 @@ Process.
 ```{R f-oup, echo = TRUE}
 rou <- function(r0, t, dt, .alpha, .sigma, b) {
     n <- t/dt
-    nt <- seq(from = 1, to = t, by = dt)
+    nt <- seq(from = 0, to = t, by = dt)[-1]
     .r <- vector(mode = "numeric", length = n)
     .r[1] <- r0
     z <- rnorm(n = n - 1)
     for(i in seq_along(nt)[-1])
-        .r[i] <- exp(- .alpha * dt) * .r[i-1] + b * (1 - exp(-.alpha * dt)) +
+        .r[i] <- exp(- .alpha * dt) * .r[i - 1] + b * (1 - exp(-.alpha * dt)) +
             (.sigma / sqrt(2 * .alpha)) * sqrt(1 - exp(- 2 * .alpha * dt)) * z[i - 1]
     
     return(.r)           
@@ -102,7 +105,7 @@ The implementation is shown by the piece of code below
 ```{R rou-eul, echo = TRUE}
 rou_euler <- function(r0, t, dt, b, .alpha, .sigma) {
     n <- t/dt
-    nt <- seq(from = 1, to = t, by = dt)
+    nt <- seq(from = 0, to = t, by = dt)[-1]
     dw <- rnorm(n - 1, 0, sqrt(dt))
     .r <- vector(mode = "numeric", length = n)
     .r[1] <- r0
@@ -164,21 +167,26 @@ eul2 <- rbindlist(eul)
 setnames(eul2, old = "V2", new = "r", skip_absent = TRUE)
 eul2[, delta := as.factor(delta)]
 
-
 ggplot() +
-    geom_line(aes(x = exa),
-              color = 1,
-              stat = "density",
-              lwd = .8,
-              inherit.aes = FALSE) +
+    ## geom_line(aes(x = exa),
+    ##           color = 1,
+    ##           stat = "density",
+    ##           lwd = 1.1,
+    ##           inherit.aes = FALSE) +
+    geom_histogram(aes(x = exa, y = ..density..),
+                   color = 1,
+                   fill  = "gray70",
+                   binwidth = bins_sturges,
+                   inherit.aes = FALSE) +
     geom_line(data = eul2,
               aes(x = r,
                   group = delta,
                   color = delta,
                   lty = delta),
               stat = "density",
-              lwd = .8) +
+              lwd = 1.1) +
     theme_classic() +
+    scale_y_continuous(expand = c(0, 0)) +
     labs(x = "r") +
     theme(
         legend.position = c(.95, .95),
@@ -186,4 +194,73 @@ ggplot() +
         legend.box.just = "right",
         legend.margin = margin(6, 6, 6, 6)
     )
+```
+
+## Problem 5.3.4
+
+The intensity function is implemented by the piece of code below.
+```{R int-lbd, echo = TRUE}
+intfun <- function(x) sqrt(x) + exp(-x) * sin(2 * pi * x) 
+```
+The distribution of $N(5)$ is Poisson with intensity $\Lambda(5)$, where
+\[
+\Lambda(5) = \int_{0}^5 \sqrt{s} + e^{-s} \sin (2 \pi s) \, ds \approx 
+`r integrate(intfun, lower = 0, upper = 5)$value`.
+\]
+
+To simulate data from an inhomogeneous Poisson process we have used the thinning
+method because the function $\Lambda(\tau) = \int_{0}^\tau \sqrt{s} + e^{-s}
+\sin (2 \pi s) \, ds$ is hard to be inverted. Additionally, $\lambda_{\max}$ can
+be computed easily using either the `optim` or the `optimize` `R` function.  
+
+The piece of code below finds $\lambda_{\max}$ and allocates it in the object
+`lbd_max`. Subsequently, the object `denom` receives $\int_0^5 \lambda(s) \,
+ds$.  Finally, the function `rnhpp` (taken from the course notes) simulates from
+an inhomogeneous Poisson process with a given intensity function and the maximum
+of this intensity within the interval $(0, \mbox{\texttt{tmax}}]$.
+```{R sim-nhp, echo = TRUE}
+## computing lambda max
+lbd_max <- optimize(f = intfun, lower = 0, upper = 5, maximum = TRUE)$objective
+
+## integrating the intensity function from 0 to 5
+denom <- integrate(intfun, lower = 0, upper = 5)$value
+
+## function to simulate a inhomogeneous poisson process
+rnhpp <- function(intensity, intmax, tmax) {
+    n <- rpois(1, intmax)
+    tt <- runif(n, 0, tmax)
+    u <- runif(n)
+    accept <- u < intensity(tt) / intmax
+    sort(tt[accept])
+}
+
+## scaled intensity function (this is useful for plotting)
+intfun_sc <- function(x, .den) intfun(x)/.den
+```
+
+The graph in Figure \ref{fig:nhp-sim} displays the histogram of 10,000
+replicates from the inhomogeneous Poisson process with intensity function
+$\lambda(t) = \sqrt{t} + e^{-t} \sin (2 \pi t)$ in the interval $(0, 5]$.  The
+solid line represents the function $\lambda(t)/\int_0^5 \lambda(s) \, ds$.
+
+It is hard to notice the reason why the method fails to sample at the upper
+bound of the time interval.
+```{R nhp-sim, fig.cap = "Inhomogeneous Poisson process."}
+repl_nhpo <- unlist(replicate(10000, rnhpp(intfun, lbd_max, 5)))
+
+ggplot() +
+    geom_histogram(aes(x = repl_nhpo,
+                       y = ..density..),
+                   color = 1,
+                   fill  = "gray70",
+                   binwidth = bins_sturges,
+                   inherit.aes = FALSE) +
+    stat_function(fun = intfun_sc,
+                  args = list(.den = denom),
+                  lwd = 1.1,
+                  n   = 1000) +
+    scale_y_continuous(expand = c(0, 0)) +
+    theme_classic() +
+    labs(x = "N(t)",
+         y = "Density")
 ```
